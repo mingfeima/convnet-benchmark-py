@@ -95,6 +95,7 @@ class ResNeXt(nn.Module):
         self.layer2 = self._make_layer(block, 128, layers[1], num_group, stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], num_group, stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], num_group, stride=2)
+        #TODO: check with FB whether change this to nn.AdaptiveAvgPool2d
         self.avgpool = nn.AvgPool2d(7, stride=1)
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
