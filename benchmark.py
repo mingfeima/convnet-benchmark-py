@@ -9,6 +9,9 @@ import time
 import subprocess
 from collections import OrderedDict
 
+from resnext import resnext101
+models.__dict__['resnext101'] = resnext101
+
 from mobilenet import MobileNetV2
 models.__dict__['mobilenet_v2'] = MobileNetV2
 
@@ -27,6 +30,7 @@ archs['alexnet'] = [128, 3, 224, 224]
 archs['vgg11'] = [64, 3, 224, 224]
 archs['inception_v3'] = [32, 3, 299, 299]
 archs['resnet50'] = [128, 3, 224, 224]
+archs['resnext101'] = [128, 3, 224, 224]
 archs['squeezenet1_0'] = [128, 3, 224, 224]
 archs['densenet121'] = [32, 3, 224, 224]
 archs['mobilenet_v2'] = [128, 3, 224, 224]
