@@ -13,6 +13,12 @@ if [[ "$1" == "--single" ]]; then
     shift
 fi
 
+if [[ "$1" == "--mkldnn" ]]; then
+    ARGS="$ARGS --mkldnn"
+    echo "### use mkldnn weight cache"
+    shift
+fi
+
 CORES=`lscpu | grep Core | awk '{print $4}'`
 SOCKETS=`lscpu | grep Socket | awk '{print $2}'`
 TOTAL_CORES=`expr $CORES \* $SOCKETS`

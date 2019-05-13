@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import math
 
@@ -136,7 +137,11 @@ class ResNeXt(nn.Module):
         x = self.layer4(x)
 
         x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
+        # mkldnn tensor has no support for view() at the moment, use reshape()
+        if x.layout == torch._mkldnn:
+            x = x.reshape(x.size(0), -1)
+        else:
+            x = x.view(x.size(0), -1)
         x = self.fc(x)
 
         return x

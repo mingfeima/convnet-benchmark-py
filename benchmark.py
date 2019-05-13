@@ -5,6 +5,7 @@ import torch.nn as nn
 import torchvision
 import torchvision.models as models
 import torch.optim as optim
+from torch.utils import mkldnn as mkldnn_utils
 import time
 import subprocess
 from collections import OrderedDict
@@ -51,6 +52,8 @@ def benchmark():
                        help='model name can be specified. all is default.' )
     parser.add_argument('--no-cuda', action='store_true', default=False,
                        help='disable CUDA')
+    parser.add_argument('--mkldnn', action='store_true', default=False,
+                       help='use mkldnn weight cache')
     parser.add_argument('--inference', action='store_true', default=False,
                        help='run inference only')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
@@ -88,39 +91,48 @@ def benchmark():
 
         return time.time()
 
-    for arch, sizes in arch_dict.items(): 
+    for arch, sizes in arch_dict.items():
+        # cover at least resnext for now per FB request
+        # TODO:
+        # 1. view() support?
+        # 2. Dropout() support?
+        if args.mkldnn and arch != 'resnext101':
+            continue
+
         if arch == 'unet3d':
             batch_size, c, d, h, w = sizes[0], sizes[1], sizes[2], sizes[3], sizes[4]
             batch_size = 1 if args.single_batch_size else batch_size
             print('ModelType: %s, Kernels: %s Input shape: %dx%dx%dx%dx%d' %
                  (arch, kernel, batch_size, c, d, h, w))
-            data_ = torch.randn(batch_size, c, d, h, w)
+            data = torch.randn(batch_size, c, d, h, w)
         else:
             batch_size, c, h, w = sizes[0], sizes[1], sizes[2], sizes[3]
             batch_size = 64 if arch is 'resnet50' and args.inference else batch_size
             batch_size = 1 if args.single_batch_size else batch_size
             print('ModelType: %s, Kernels: %s Input shape: %dx%dx%dx%d' %
                  (arch, kernel, batch_size, c, h, w))
-            data_ = torch.randn(batch_size, c, h, w)
+            data = torch.randn(batch_size, c, h, w)
 
-        target_ = torch.arange(1, batch_size + 1).long()
+        target = torch.arange(1, batch_size + 1).long()
         net = models.__dict__[arch]() # no need to load pre-trained weights for dummy data
 
         optimizer = optim.SGD(net.parameters(), lr=0.01)
         criterion = nn.CrossEntropyLoss()
 
         if args.cuda:
-            data_, target_ = data_.cuda(), target_.cuda()
+            data, target = data.cuda(), target.cuda()
             net.cuda()
             criterion = criterion.cuda()
+
+        if args.mkldnn:
+            data = data.to_mkldnn()
+            net = mkldnn_utils.to_mkldnn(net)
 
         if args.inference:
             net.eval()
         else:
             net.train()
             net.aux_logits = False
-
-        data, target = Variable(data_), Variable(target_)
 
         for i in range(nDryRuns):
             optimizer.zero_grad()   # zero the gradient buffers
