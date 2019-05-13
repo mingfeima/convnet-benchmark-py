@@ -138,6 +138,8 @@ def benchmark():
             optimizer.zero_grad()   # zero the gradient buffers
             output = net(data)
             if not args.inference:
+                if args.mkldnn:
+                    output = output.to_dense()
                 loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
                 loss.backward()
                 optimizer.step()    # Does the update
@@ -150,6 +152,8 @@ def benchmark():
             output = net(data)
             t2 = _time()
             if not args.inference:
+                if args.mkldnn:
+                    output = output.to_dense()
                 loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
                 loss.backward()
                 t3 = _time()
