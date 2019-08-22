@@ -124,15 +124,15 @@ def benchmark():
             net.cuda()
             criterion = criterion.cuda()
 
-        if args.mkldnn:
-            data = data.to_mkldnn()
-            net = mkldnn_utils.to_mkldnn(net)
-
         if args.inference:
             net.eval()
         else:
             net.train()
             net.aux_logits = False
+
+        if args.mkldnn:
+            data = data.to_mkldnn()
+            net = mkldnn_utils.to_mkldnn(net)
 
         for i in range(nDryRuns):
             optimizer.zero_grad()   # zero the gradient buffers
