@@ -10,8 +10,7 @@ import time
 import subprocess
 from collections import OrderedDict
 
-from resnext import resnext101
-models.__dict__['resnext101'] = resnext101
+models.__dict__['resnext101'] = models.resnext101_32x8d
 
 from mobilenet import MobileNetV2
 models.__dict__['mobilenet_v2'] = MobileNetV2
@@ -56,6 +55,8 @@ def benchmark():
                        help='use mkldnn weight cache')
     parser.add_argument('--inference', action='store_true', default=False,
                        help='run inference only')
+    parser.add_argument('--cache-weight', action='store_true', default=False,
+                       help='cache mkldnn reordered weight for inference')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
                        help='single batch size')
     parser.add_argument('--print-iteration-time', action='store_true', default=False,
@@ -133,13 +134,20 @@ def benchmark():
         if args.mkldnn:
             data = data.to_mkldnn()
             net = mkldnn_utils.to_mkldnn(net)
+            if args.cache_weight:
+                fname = '{}.script.pt'.format(arch)
+                traced = torch.jit.trace(net, data, check_trace=False)
+                script = traced.save(fname)
+                net = torch.jit.load(fname)
+                print('### load script module from {}, weight reordered in mkldnn format')
 
         for i in range(nDryRuns):
             optimizer.zero_grad()   # zero the gradient buffers
-            output = net(data)
-            if not args.inference:
-                if args.mkldnn:
-                    output = output.to_dense()
+            if args.inference:
+                with torch.no_grad():
+                    output = net(data)
+            else:
+                output = net(data)
                 loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
                 loss.backward()
                 optimizer.step()    # Does the update
@@ -149,11 +157,13 @@ def benchmark():
         for i in range(steps):
             optimizer.zero_grad()   # zero the gradient buffers
             t1 = _time()
-            output = net(data)
+            if args.inference:
+                with torch.no_grad():
+                    output = net(data)
+            else:
+                output = net(data)
             t2 = _time()
             if not args.inference:
-                if args.mkldnn:
-                    output = output.to_dense()
                 loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
                 loss.backward()
                 t3 = _time()

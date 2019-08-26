@@ -15,7 +15,13 @@ fi
 
 if [[ "$1" == "--mkldnn" ]]; then
     ARGS="$ARGS --mkldnn"
-    echo "### use mkldnn weight cache"
+    echo "### cache input/output in mkldnn format"
+    shift
+fi
+
+if [[ "$1" == "--cache-weight" ]]; then
+    ARGS="$ARGS --cache-weight"
+    echo "### cache weight in mkldnn format"
     shift
 fi
 
