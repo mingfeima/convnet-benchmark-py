@@ -61,7 +61,7 @@ Running on torch: 1.2.0
 Running on torchvision: 0.4.0
 
 ModelType: resnext101, Kernels: nn Input shape: 1x3x224x224
-### load script module from {}, weight reordered in mkldnn format
+### load script module from resnext101.script.pt, weight reordered in mkldnn format
 nn                              :forward:      32.35 (ms)      30.91 (imgs/s)
 nn                             :backward:       0.00 (ms)
 nn                               :update:       0.00 (ms)
