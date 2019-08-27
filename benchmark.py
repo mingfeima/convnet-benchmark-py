@@ -139,7 +139,7 @@ def benchmark():
                 traced = torch.jit.trace(net, data, check_trace=False)
                 script = traced.save(fname)
                 net = torch.jit.load(fname)
-                print('### load script module from {}, weight reordered in mkldnn format')
+                print('### load script module from {}, weight reordered in mkldnn format'.format(fname))
 
         for i in range(nDryRuns):
             optimizer.zero_grad()   # zero the gradient buffers
