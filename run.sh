@@ -1,9 +1,24 @@
 #!/bin/sh
 
+### [tcmalloc]: compile tcmalloc according to
+###   http://goog-perftools.sourceforge.net/doc/tcmalloc.html
+export LD_PRELOAD=/home/mingfeim/packages/gperftools-2.8/install/lib/libtcmalloc.so
+
+
+CORES=`lscpu | grep Core | awk '{print $4}'`
+SOCKETS=`lscpu | grep Socket | awk '{print $2}'`
+TOTAL_CORES=`expr $CORES \* $SOCKETS`
+
+PREFIX=""
+
 ARGS=""
 if [[ "$1" == "--inference" ]]; then
     ARGS="$ARGS --inference"
     echo "### inference only"
+    ### using single socket for inference to allow numactrl to work
+    TOTAL_CORES=$CORES
+    LAST_CORE=`expr $CORES - 1`
+    PREFIX="numactl --physcpubind=0-$LAST_CORE --membind=0"
     shift
 fi
 
@@ -19,15 +34,11 @@ if [[ "$1" == "--mkldnn" ]]; then
     shift
 fi
 
-if [[ "$1" == "--cache-weight" ]]; then
-    ARGS="$ARGS --cache-weight"
-    echo "### cache weight in mkldnn format"
+if [[ "$1" == "--jit" ]]; then
+    ARGS="$ARGS --jit"
+    echo "### jitted in mkldnn format"
     shift
 fi
-
-CORES=`lscpu | grep Core | awk '{print $4}'`
-SOCKETS=`lscpu | grep Socket | awk '{print $2}'`
-TOTAL_CORES=`expr $CORES \* $SOCKETS`
 
 KMP_SETTING="KMP_AFFINITY=granularity=fine,compact,1,0"
 KMP_BLOCKTIME=1
@@ -38,6 +49,7 @@ export KMP_BLOCKTIME=$KMP_BLOCKTIME
 
 echo -e "### using OMP_NUM_THREADS=$TOTAL_CORES"
 echo -e "### using $KMP_SETTING"
-echo -e "### using KMP_BLOCKTIME=$KMP_BLOCKTIME\n"
+echo -e "### using KMP_BLOCKTIME=$KMP_BLOCKTIME"
+echo -e "### using $PREFIX\n"
 
-python -u benchmark.py $ARGS
+$PREFIX python -u benchmark.py $ARGS

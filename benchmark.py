@@ -52,11 +52,11 @@ def benchmark():
     parser.add_argument('--no-cuda', action='store_true', default=False,
                        help='disable CUDA')
     parser.add_argument('--mkldnn', action='store_true', default=False,
-                       help='use mkldnn weight cache')
+                       help='use tensor in _mkldnn layout')
     parser.add_argument('--inference', action='store_true', default=False,
                        help='run inference only')
-    parser.add_argument('--cache-weight', action='store_true', default=False,
-                       help='cache mkldnn reordered weight for inference')
+    parser.add_argument('--jit', action='store_true', default=False,
+                       help='jitted path for inference')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
                        help='single batch size')
     parser.add_argument('--print-iteration-time', action='store_true', default=False,
@@ -73,7 +73,7 @@ def benchmark():
         cudnn.deterministic = True
 
         kernel = 'cudnn'
-        p = subprocess.check_output('nvidia-smi --query-gpu=name --format=csv', 
+        p = subprocess.check_output('nvidia-smi --query-gpu=name --format=csv',
                                     shell=True)
         device_name = str(p).split('\\n')[1]
     else:
@@ -134,7 +134,7 @@ def benchmark():
         if args.mkldnn:
             data = data.to_mkldnn()
             net = mkldnn_utils.to_mkldnn(net)
-            if args.cache_weight:
+            if args.jit:
                 fname = '{}.script.pt'.format(arch)
                 traced = torch.jit.trace(net, data, check_trace=False)
                 script = traced.save(fname)
