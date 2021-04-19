@@ -26,22 +26,23 @@ models.__dict__['unet3d'] = UNet3D
 
 
 archs = OrderedDict()
-archs['alexnet'] = [128, 3, 224, 224]
-archs['vgg11'] = [64, 3, 224, 224]
-archs['inception_v3'] = [32, 3, 299, 299]
-archs['resnet50'] = [128, 3, 224, 224]
-archs['resnext101'] = [128, 3, 224, 224]
-archs['squeezenet1_0'] = [128, 3, 224, 224]
-archs['densenet121'] = [32, 3, 224, 224]
-archs['mobilenet_v2'] = [128, 3, 224, 224]
-archs['shufflenet'] = [128, 3, 224, 224]
-archs['unet'] = [32, 3, 128, 128]
-archs['unet3d'] = [6, 4, 64, 64, 64]
+
+### [batch_size, channels, width, height, support_channels_last, support_mkldnn_blocked]
+archs['alexnet'] = [128, 3, 224, 224, True, True]
+archs['vgg11'] = [64, 3, 224, 224, True, True]
+archs['inception_v3'] = [32, 3, 299, 299, True, False]
+archs['resnet50'] = [128, 3, 224, 224, True, True]
+archs['resnext101'] = [128, 3, 224, 224, True, True]
+archs['squeezenet1_0'] = [128, 3, 224, 224, True, False]
+archs['densenet121'] = [32, 3, 224, 224, True, False]
+archs['mobilenet_v2'] = [128, 3, 224, 224, True, False]
+archs['shufflenet'] = [128, 3, 224, 224, True, False]
+archs['unet'] = [32, 3, 128, 128, True, False]
+#archs['unet3d'] = [6, 4, 64, 64, 64]
 
 archs_list = list(archs.keys())
 steps = 10 # nb of steps in loop to average perf
 nDryRuns = 5 # nb of warmup steps
-
 
 def benchmark():
     # benchmark settings
@@ -52,20 +53,18 @@ def benchmark():
     parser.add_argument('--no-cuda', action='store_true', default=False,
                        help='disable CUDA')
     parser.add_argument('--mkldnn', action='store_true', default=False,
-                       help='use tensor in _mkldnn layout')
+                       help='use mkldnn blocked memory format')
+    parser.add_argument('--channels_last', action='store_true', default=False,
+                       help='use channels_last (NHWC) memory format')
     parser.add_argument('--inference', action='store_true', default=False,
                        help='run inference only')
-    parser.add_argument('--jit', action='store_true', default=False,
-                       help='jitted path for inference')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
                        help='single batch size')
-    parser.add_argument('--print-iteration-time', action='store_true', default=False,
-                       help='print iteration time')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-    arch_dict = {args.arch: archs[args.arch]} if args.arch in archs_list else archs # by huiming, support one or all models.
+    arch_dict = {args.arch: archs[args.arch]} if args.arch in archs_list else archs
 
     if args.cuda:
         import torch.backends.cudnn as cudnn
@@ -92,27 +91,23 @@ def benchmark():
 
         return time.time()
 
-    for arch, sizes in arch_dict.items():
-        # cover at least resnext for now per FB request
-        # TODO:
-        # 1. view() support?
-        # 2. Dropout() support?
-        if args.mkldnn and arch != 'resnext101':
-            continue
-
+    for arch, config in arch_dict.items():
         if arch == 'unet3d':
-            batch_size, c, d, h, w = sizes[0], sizes[1], sizes[2], sizes[3], sizes[4]
+            batch_size, c, d, h, w = config[0], config[1], config[2], config[3], config[4]
             batch_size = 1 if args.single_batch_size else batch_size
             print('ModelType: %s, Kernels: %s Input shape: %dx%dx%dx%dx%d' %
                  (arch, kernel, batch_size, c, d, h, w))
             data = torch.randn(batch_size, c, d, h, w)
         else:
-            batch_size, c, h, w = sizes[0], sizes[1], sizes[2], sizes[3]
+            batch_size, c, h, w = config[0], config[1], config[2], config[3]
             batch_size = 64 if arch is 'resnet50' and args.inference else batch_size
             batch_size = 1 if args.single_batch_size else batch_size
             print('ModelType: %s, Kernels: %s Input shape: %dx%dx%dx%d' %
                  (arch, kernel, batch_size, c, h, w))
             data = torch.randn(batch_size, c, h, w)
+
+        support_channels_last = config[4]
+        support_mkldnn_blocked = config[5]
 
         target = torch.arange(1, batch_size + 1).long()
         net = models.__dict__[arch]() # no need to load pre-trained weights for dummy data
@@ -125,21 +120,32 @@ def benchmark():
             net.cuda()
             criterion = criterion.cuda()
 
+        # use mkldnn blocked format
+        if args.mkldnn:
+            if not support_mkldnn_blocked:
+                print("model: %s does not support mkldnn blocked format yet!" % (arch))
+                continue
+
+            data = data.to_mkldnn()
+            if args.inference:
+                net.eval()
+                ### weight prepacking for inference
+                net = mkldnn_utils.to_mkldnn(net)
+
+        # use channels last format
+        if args.channels_last:
+            if not support_channels_last:
+                print("model: %s does not support channels last format yet!" % (arch))
+                continue
+
+            data = data.to(memory_format=torch.channels_last)
+            net = net.to(memory_format=torch.channels_last)
+
         if args.inference:
             net.eval()
         else:
             net.train()
             net.aux_logits = False
-
-        if args.mkldnn:
-            data = data.to_mkldnn()
-            net = mkldnn_utils.to_mkldnn(net)
-            if args.jit:
-                fname = '{}.script.pt'.format(arch)
-                traced = torch.jit.trace(net, data, check_trace=False)
-                script = traced.save(fname)
-                net = torch.jit.load(fname)
-                print('### load script module from {}, weight reordered in mkldnn format'.format(fname))
 
         for i in range(nDryRuns):
             optimizer.zero_grad()   # zero the gradient buffers
@@ -170,8 +176,6 @@ def benchmark():
                 optimizer.step()    # Does the update
                 t4 = _time()
             time_fwd = time_fwd + (t2 - t1)
-            if args.print_iteration_time:
-                print("%-30s %d: %10.2f ms" % ('forward iteration', i, (t2-t1)*1000))
             if not args.inference:
                 time_bwd = time_bwd + (t3 - t2)
                 time_upt = time_upt + (t4 - t3)

@@ -30,13 +30,13 @@ fi
 
 if [[ "$1" == "--mkldnn" ]]; then
     ARGS="$ARGS --mkldnn"
-    echo "### cache input/output in mkldnn format"
+    echo "### use mkldnn blocking format"
     shift
 fi
 
-if [[ "$1" == "--jit" ]]; then
-    ARGS="$ARGS --jit"
-    echo "### jitted in mkldnn format"
+if [[ "$1" == "--channels_last" ]]; then
+    ARGS="$ARGS --channels_last"
+    echo "### use channels last format"
     shift
 fi
 
@@ -50,6 +50,6 @@ export KMP_BLOCKTIME=$KMP_BLOCKTIME
 echo -e "### using OMP_NUM_THREADS=$TOTAL_CORES"
 echo -e "### using $KMP_SETTING"
 echo -e "### using KMP_BLOCKTIME=$KMP_BLOCKTIME"
-echo -e "### using $PREFIX\n"
+echo -e "### using $PREFIX\n\n"
 
 $PREFIX python -u benchmark.py $ARGS

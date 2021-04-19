@@ -6,14 +6,14 @@ from collections import OrderedDict
 from torch.nn import init
 
 
-def conv3x3(in_channels, out_channels, stride=1, 
-            padding=1, bias=True, groups=1):    
+def conv3x3(in_channels, out_channels, stride=1,
+            padding=1, bias=True, groups=1):
     """3x3 convolution with padding
     """
     return nn.Conv2d(
-        in_channels, 
-        out_channels, 
-        kernel_size=3, 
+        in_channels,
+        out_channels,
+        kernel_size=3,
         stride=stride,
         padding=padding,
         bias=bias,
@@ -26,9 +26,9 @@ def conv1x1(in_channels, out_channels, groups=1):
     - Grouped pointwise convolution when groups > 1
     """
     return nn.Conv2d(
-        in_channels, 
-        out_channels, 
-        kernel_size=1, 
+        in_channels,
+        out_channels,
+        kernel_size=1,
         groups=groups,
         stride=1)
 
@@ -37,9 +37,9 @@ def channel_shuffle(x, groups):
     batchsize, num_channels, height, width = x.data.size()
 
     channels_per_group = num_channels // groups
-    
+
     # reshape
-    x = x.view(batchsize, groups, 
+    x = x.view(batchsize, groups,
         channels_per_group, height, width)
 
     # transpose
@@ -56,7 +56,7 @@ def channel_shuffle(x, groups):
 class ShuffleUnit(nn.Module):
     def __init__(self, in_channels, out_channels, groups=3,
                  grouped_conv=True, combine='add'):
-        
+
         super(ShuffleUnit, self).__init__()
 
         self.in_channels = in_channels
@@ -65,6 +65,8 @@ class ShuffleUnit(nn.Module):
         self.combine = combine
         self.groups = groups
         self.bottleneck_channels = self.out_channels // 4
+
+        self.channel_shuffle = nn.ChannelShuffle(groups)
 
         # define the type of ShuffleUnit
         if self.combine == 'add':
@@ -75,8 +77,8 @@ class ShuffleUnit(nn.Module):
             # ShuffleUnit Figure 2c
             self.depthwise_stride = 2
             self._combine_func = self._concat
-            
-            # ensure output of concat has the same channels as 
+
+            # ensure output of concat has the same channels as
             # original output channels.
             self.out_channels -= self.in_channels
         else:
@@ -103,7 +105,7 @@ class ShuffleUnit(nn.Module):
             stride=self.depthwise_stride, groups=self.bottleneck_channels)
         self.bn_after_depthwise = nn.BatchNorm2d(self.bottleneck_channels)
 
-        # Use 1x1 grouped convolution to expand from 
+        # Use 1x1 grouped convolution to expand from
         # bottleneck_channels to out_channels
         self.g_conv_1x1_expand = self._make_grouped_conv1x1(
             self.bottleneck_channels,
@@ -149,15 +151,15 @@ class ShuffleUnit(nn.Module):
         residual = x
 
         if self.combine == 'concat':
-            residual = F.avg_pool2d(residual, kernel_size=3, 
+            residual = F.avg_pool2d(residual, kernel_size=3,
                 stride=2, padding=1)
 
         out = self.g_conv_1x1_compress(x)
-        out = channel_shuffle(out, self.groups)
+        out = self.channel_shuffle(out)
         out = self.depthwise_conv3x3(out)
         out = self.bn_after_depthwise(out)
         out = self.g_conv_1x1_expand(out)
-        
+
         out = self._combine_func(residual, out)
         return F.relu(out)
 
@@ -169,7 +171,7 @@ class ShuffleNet(nn.Module):
     def __init__(self, groups=3, in_channels=3, num_classes=1000):
         """ShuffleNet constructor.
         Arguments:
-            groups (int, optional): number of groups to be used in grouped 
+            groups (int, optional): number of groups to be used in grouped
                 1x1 convolutions in each ShuffleUnit. Default is 3 for best
                 performance according to original paper.
             in_channels (int, optional): number of channels in the input tensor.
@@ -200,7 +202,7 @@ class ShuffleNet(nn.Module):
             raise ValueError(
                 """{} groups is not supported for
                    1x1 Grouped Convolutions""".format(num_groups))
-        
+
         # Stage 1 always has 24 output channels
         self.conv1 = conv3x3(self.in_channels,
                              self.stage_out_channels[1], # stage 1
@@ -242,12 +244,12 @@ class ShuffleNet(nn.Module):
     def _make_stage(self, stage):
         modules = OrderedDict()
         stage_name = "ShuffleUnit_Stage{}".format(stage)
-        
+
         # First ShuffleUnit in the stage
         # 1. non-grouped 1x1 convolution (i.e. pointwise convolution)
         #   is used in Stage 2. Group convolutions used everywhere else.
         grouped_conv = stage > 2
-        
+
         # 2. concatenation unit is always used.
         first_module = ShuffleUnit(
             self.stage_out_channels[stage-1],
@@ -283,7 +285,7 @@ class ShuffleNet(nn.Module):
 
         # global average pooling layer
         x = F.avg_pool2d(x, x.data.size()[-2:])
-        
+
         # flatten for input to fully-connected layer
         x = x.view(x.size(0), -1)
         x = self.fc(x)
