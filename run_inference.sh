@@ -15,23 +15,16 @@ SOCKETS=`lscpu | grep Socket | awk '{print $2}'`
 TOTAL_CORES=`expr $CORES \* $SOCKETS`
 
 PREFIX=""
-
 ARGS=""
-if [[ "$1" == "--inference" ]]; then
-    ARGS="$ARGS --inference"
-    echo "### inference only"
-    ### using single socket for inference to allow numactrl to work
-    TOTAL_CORES=$CORES
-    LAST_CORE=`expr $CORES - 1`
-    PREFIX="numactl --physcpubind=0-$LAST_CORE --membind=0"
-    shift
-fi
 
-if [[ "$1" == "--single" ]]; then
-    ARGS="$ARGS --single-batch-size"
-    echo "### using single batch size"
-    shift
-fi
+### using single socket for inference to allow numactrl to work
+TOTAL_CORES=$CORES
+LAST_CORE=`expr $CORES - 1`
+PREFIX="numactl --physcpubind=0-$LAST_CORE --membind=0"
+
+echo "### inference only"
+ARGS="$ARGS --inference"
+ARGS="$ARGS --single-batch-size"
 
 if [[ "$1" == "--mkldnn" ]]; then
     ARGS="$ARGS --mkldnn"
