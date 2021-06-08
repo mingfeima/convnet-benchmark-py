@@ -9,6 +9,7 @@ from torch.utils import mkldnn as mkldnn_utils
 import time
 import subprocess
 from collections import OrderedDict
+import torch.autograd.profiler as profiler
 
 models.__dict__['resnext101'] = models.resnext101_32x8d
 
@@ -43,7 +44,7 @@ archs['unet'] = [32, 3, 128, 128, True, False]
 #archs['unet3d'] = [6, 4, 64, 64, 64]
 
 archs_list = list(archs.keys())
-steps = 10 # nb of steps in loop to average perf
+steps = 50 # nb of steps in loop to average perf
 nDryRuns = 5 # nb of warmup steps
 
 def benchmark():
@@ -62,6 +63,8 @@ def benchmark():
                        help='run inference only')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
                        help='single batch size')
+    parser.add_argument('--profile', action='store_true', default=False,
+                       help='enable autograd profiler')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -162,32 +165,36 @@ def benchmark():
 
         time_fwd, time_bwd, time_upt = 0, 0, 0
 
-        for i in range(steps):
-            optimizer.zero_grad()   # zero the gradient buffers
-            t1 = _time()
-            if args.inference:
-                with torch.no_grad():
+        with profiler.profile(record_shapes=True, enabled=args.profile) as prof:
+            for i in range(steps):
+                optimizer.zero_grad()   # zero the gradient buffers
+                t1 = _time()
+                if args.inference:
+                    with torch.no_grad():
+                        output = net(data)
+                else:
                     output = net(data)
-            else:
-                output = net(data)
-            t2 = _time()
-            if not args.inference:
-                loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
-                loss.backward()
-                t3 = _time()
-                optimizer.step()    # Does the update
-                t4 = _time()
-            time_fwd = time_fwd + (t2 - t1)
-            if not args.inference:
-                time_bwd = time_bwd + (t3 - t2)
-                time_upt = time_upt + (t4 - t3)
+                t2 = _time()
+                if not args.inference:
+                    loss = output.sum() / 1e6 if 'unet' in arch else criterion(output, target)
+                    loss.backward()
+                    t3 = _time()
+                    optimizer.step()    # Does the update
+                    t4 = _time()
+                time_fwd = time_fwd + (t2 - t1)
+                if not args.inference:
+                    time_bwd = time_bwd + (t3 - t2)
+                    time_upt = time_upt + (t4 - t3)
 
-        time_fwd_avg = time_fwd / steps * 1000
-        time_bwd_avg = time_bwd / steps * 1000
-        time_upt_avg = time_upt / steps * 1000
+            time_fwd_avg = time_fwd / steps * 1000
+            time_bwd_avg = time_bwd / steps * 1000
+            time_upt_avg = time_upt / steps * 1000
 
-        # update not included!
-        time_total = time_fwd_avg + time_bwd_avg
+            # update not included!
+            time_total = time_fwd_avg + time_bwd_avg
+
+        if args.profile:
+            print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=100))
 
         print("%-30s %10s %10.2f (ms) %10.2f (imgs/s)" % (kernel, ':forward:',
               time_fwd_avg, batch_size*1000/time_fwd_avg ))

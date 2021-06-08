@@ -38,6 +38,12 @@ if [[ "$1" == "--channels_last" ]]; then
     shift
 fi
 
+if [[ "$1" == "--profile" ]]; then
+    ARGS="$ARGS --profile"
+    echo "### enable profiler"
+    shift
+fi
+
 KMP_SETTING="KMP_AFFINITY=granularity=fine,compact,1,0"
 KMP_BLOCKTIME=1
 
