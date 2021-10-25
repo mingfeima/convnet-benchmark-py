@@ -63,6 +63,8 @@ def benchmark():
                        help='run inference only')
     parser.add_argument('--single-batch-size', action='store_true', default=False,
                        help='single batch size')
+    parser.add_argument('--bfloat16', action='store_true', default=False,
+                       help='use bfloat16 data type')
     parser.add_argument('--profile', action='store_true', default=False,
                        help='enable autograd profiler')
 
@@ -145,6 +147,10 @@ def benchmark():
 
             data = data.to(memory_format=torch.channels_last)
             net = net.to(memory_format=torch.channels_last)
+
+        if args.bfloat16:
+            data = data.bfloat16()
+            net = net.bfloat16()
 
         if args.inference:
             net.eval()

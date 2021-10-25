@@ -38,6 +38,12 @@ if [[ "$1" == "--channels_last" ]]; then
     shift
 fi
 
+if [[ "$1" == "--bfloat16" ]]; then
+    ARGS="$ARGS --bfloat16"
+    echo "### use bfloat16"
+    shift
+fi
+
 if [[ "$1" == "--profile" ]]; then
     ARGS="$ARGS --profile"
     echo "### enable profiler"
